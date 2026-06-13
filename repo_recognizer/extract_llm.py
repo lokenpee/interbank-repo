@@ -71,6 +71,9 @@ class ExtractLLM:
     def _parse_result(raw: dict[str, Any]) -> ExtractResult:
         result = ExtractResult()
         result.counterparty = clean_text(raw.get("counterparty", ""))
+        result.linking_reason = clean_text(raw.get("linking_reason", ""))
+        result.status_signals = clean_text(raw.get("status_signals", ""))
+        result.ambiguity = clean_text(raw.get("ambiguity", ""))
 
         for item in raw.get("trades", []) or []:
             if not isinstance(item, dict):

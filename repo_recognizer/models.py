@@ -216,11 +216,14 @@ class StateChange:
 
 @dataclass
 class ExtractResult:
-    """Output from the Extract LLM."""
+    """Output from the Extract LLM — trade book-keeper, not status judge."""
 
     counterparty: str = ""
     trades: list[TradeState] = field(default_factory=list)
     changes: list[TradeChange] = field(default_factory=list)
+    linking_reason: str = ""
+    status_signals: str = ""
+    ambiguity: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -230,6 +233,9 @@ class ExtractResult:
                 {"type": change.type, "trade_id": change.trade_id, "reason": change.reason}
                 for change in self.changes
             ],
+            "linking_reason": self.linking_reason,
+            "status_signals": self.status_signals,
+            "ambiguity": self.ambiguity,
         }
 
 
@@ -244,6 +250,16 @@ class JudgeResult:
 
 
 @dataclass
+class VerifierResult:
+    """Mechanical checks run after Judge, before Merge."""
+
+    verdicts: list[dict[str, str]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"verdicts": self.verdicts}
+
+
+@dataclass
 class ProcessedRow:
     """Final output for one message row."""
 
@@ -251,6 +267,7 @@ class ProcessedRow:
     extract_result: dict[str, Any] = field(default_factory=dict)
     normalized_extract_result: dict[str, Any] = field(default_factory=dict)
     judge_result: dict[str, Any] = field(default_factory=dict)
+    verifier_result: dict[str, Any] = field(default_factory=dict)
     final_state: dict[str, Any] = field(default_factory=dict)
     public_result: dict[str, Any] = field(default_factory=dict)
     state_changes: list[dict[str, str]] = field(default_factory=list)

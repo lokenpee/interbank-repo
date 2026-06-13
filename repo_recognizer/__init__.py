@@ -8,4 +8,5 @@ __all__ = [
     "llm_client",
     "models",
     "state_store",
+    "verifier",
 ]

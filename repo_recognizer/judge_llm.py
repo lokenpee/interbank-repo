@@ -38,19 +38,20 @@ class JudgeLLM:
         self,
         current_message: Message,
         state: ConversationState,
-        extract_trades: list[dict[str, Any]],
+        normalized_extract_result: dict[str, Any],
     ) -> JudgeResult:
         """Run the Judge LLM and return a parsed JudgeResult.
 
         Args:
             current_message: The message being processed.
             state: Current conversation state (including history before this message).
-            extract_trades: Serialized trades from the Extract LLM.
+            normalized_extract_result: Full normalized Extract LLM output
+                (trades + linking_reason + status_signals + ambiguity).
 
         Raises:
             LLMError: On API or parse failures.
         """
-        payload = self._build_payload(current_message, state, extract_trades)
+        payload = self._build_payload(current_message, state, normalized_extract_result)
         user_content = json.dumps(payload, ensure_ascii=False, indent=2)
 
         raw = self.client.chat_json(user_content)
@@ -61,7 +62,7 @@ class JudgeLLM:
         self,
         current_message: Message,
         state: ConversationState,
-        extract_trades: list[dict[str, Any]],
+        normalized_extract_result: dict[str, Any],
     ) -> dict[str, Any]:
         return {
             "conversation_history": [
@@ -69,7 +70,7 @@ class JudgeLLM:
             ]
             + [current_message.to_prompt_dict()],
             "current_message": current_message.to_prompt_dict(),
-            "normalized_extract_trades": extract_trades,
+            "normalized_extract_result": normalized_extract_result,
             "current_state": state.to_prompt_state(),
             "known_trade_index": trade_index_for_prompt(state),
         }

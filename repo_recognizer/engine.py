@@ -9,10 +9,11 @@ from .judge_llm import JudgeLLM
 from .llm_client import LLMError
 from .models import Message, ProcessedRow, StateChange
 from .state_store import StateStore
+from .verifier import verify
 
 
 class RecognizerEngine:
-    """Orchestrates Extract -> ID normalize -> Judge -> Merge."""
+    """Orchestrates Extract -> ID normalize -> Judge -> Verify -> Merge."""
 
     def __init__(self, extract_llm: ExtractLLM, judge_llm: JudgeLLM) -> None:
         self.extract_llm = extract_llm
@@ -29,6 +30,7 @@ class RecognizerEngine:
         extract_result_dict: dict[str, Any] = {}
         normalized_extract_result_dict: dict[str, Any] = {}
         judge_result_dict: dict[str, Any] = {}
+        verifier_result_dict: dict[str, Any] = {}
         state_changes: list[StateChange] = []
 
         extract_result = None
@@ -53,7 +55,7 @@ class RecognizerEngine:
                     judge_result = self.judge_llm.judge(
                         message,
                         state,
-                        [trade.to_dict() for trade in normalized_extract_result.trades],
+                        normalized_extract_result_dict,
                     )
                     judge_result_dict = judge_result.to_dict()
                     used_llm = True
@@ -61,6 +63,21 @@ class RecognizerEngine:
                     llm_error = _append_error(llm_error, f"Judge LLM: {exc}")
             else:
                 llm_error = _append_error(llm_error, "Judge LLM not available (no API key)")
+
+            # Verifier — mechanical, no LLM
+            if judge_result is not None:
+                extract_trades_for_verify = [
+                    t.to_dict() for t in normalized_extract_result.trades
+                ]
+                verifier = verify(state, extract_trades_for_verify, judge_result)
+                verifier_result_dict = verifier.to_dict()
+                if verifier.verdicts:
+                    errors = [v for v in verifier.verdicts if v["level"] == "error"]
+                    if errors:
+                        llm_error = _append_error(
+                            llm_error,
+                            f"Verifier: {len(errors)} error(s), {len(verifier.verdicts)} warning(s) total",
+                        )
 
             state_changes.extend(
                 self.store.merge_extract_result(state, normalized_extract_result, message)
@@ -75,6 +92,7 @@ class RecognizerEngine:
             extract_result=extract_result_dict,
             normalized_extract_result=normalized_extract_result_dict,
             judge_result=judge_result_dict,
+            verifier_result=verifier_result_dict,
             final_state=state.to_full_result(),
             public_result=state.to_public_result(),
             state_changes=[change.to_dict() for change in state_changes],
