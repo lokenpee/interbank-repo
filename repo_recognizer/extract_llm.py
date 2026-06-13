@@ -22,6 +22,7 @@ from .models import (
     TradeChange,
     TradeState,
     clean_text,
+    trade_index_for_prompt,
 )
 
 
@@ -59,9 +60,10 @@ class ExtractLLM:
     ) -> dict[str, Any]:
         return {
             "current_state": state.to_prompt_state(),
+            "known_trade_index": trade_index_for_prompt(state),
             "conversation_history": [
                 msg.to_prompt_dict() for msg in state.messages
-            ],
+            ] + [current_message.to_prompt_dict()],
             "current_message": current_message.to_prompt_dict(),
         }
 
@@ -81,6 +83,7 @@ class ExtractLLM:
                 price=clean_text(item.get("price", "")),
                 direction=clean_text(item.get("direction", "")),
                 evidence=list(item.get("evidence", []) or []),
+                field_sources=dict(item.get("field_sources", {}) or {}),
             )
             result.trades.append(trade)
 

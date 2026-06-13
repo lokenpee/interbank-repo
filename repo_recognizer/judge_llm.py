@@ -20,6 +20,7 @@ from .models import (
     JudgeResult,
     Message,
     clean_text,
+    trade_index_for_prompt,
 )
 
 
@@ -68,8 +69,9 @@ class JudgeLLM:
             ]
             + [current_message.to_prompt_dict()],
             "current_message": current_message.to_prompt_dict(),
-            "trades": extract_trades,
+            "normalized_extract_trades": extract_trades,
             "current_state": state.to_prompt_state(),
+            "known_trade_index": trade_index_for_prompt(state),
         }
 
     @staticmethod
@@ -78,11 +80,16 @@ class JudgeLLM:
         for item in raw.get("trades", []) or []:
             if not isinstance(item, dict):
                 continue
+            confidence_raw = item.get("confidence", 0.5)
+            try:
+                confidence = float(confidence_raw)
+            except (TypeError, ValueError):
+                confidence = 0.5
             result.trades.append({
                 "id": clean_text(item.get("id", "")),
                 "status": clean_text(item.get("status", "negotiating")),
                 "intent": clean_text(item.get("intent", "")),
-                "confidence": float(item.get("confidence", 0.5)),
+                "confidence": confidence,
                 "reason": clean_text(item.get("reason", "")),
             })
         return result

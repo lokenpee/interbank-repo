@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# ---- intent constants (kept for reference / output labels) ----
+
 CONFIRMED_INTENT = "交易成交"
 NEGOTIATING_INTENT = "价格议价期限调整"
 REJECTED_INTENT = "交易拒绝"
@@ -11,7 +11,6 @@ CANCELLED_INTENT = "取消"
 DETAIL_INTENT = "补充明细"
 
 
-# ---- utility functions ----
 def clean_text(value: Any) -> str:
     if value is None:
         return ""
@@ -25,11 +24,17 @@ def normalize_bool(value: Any) -> bool:
     return text in {"true", "1", "yes", "y", "是"}
 
 
-# ---- data classes ----
+def row_ref(message: "Message") -> str:
+    text = clean_text(message.context).replace("\n", " / ").replace("\t", " | ")
+    if len(text) > 140:
+        text = text[:140] + "..."
+    return f"row {message.row_number} {message.sender}: {text}"
+
 
 @dataclass
 class Message:
     """A single chat message from Excel."""
+
     row_number: int
     con_id: str
     sender: str
@@ -62,20 +67,21 @@ class Message:
 class TradeState:
     """A single trade tracked within a conversation.
 
-    Uses an internal ``id`` (T1, T2, ...) as the stable key.
-    ``account`` may be empty when the trade is discussed verbally
-    before detailed accounts are sent.
+    The stable key is internal id (T1, T2, ...). account may be empty when
+    the trade is first discussed verbally and only filled later by details.
     """
-    id: str = ""                      # T1, T2, ...
-    account: str = ""                 # may be empty
+
+    id: str = ""
+    account: str = ""
     amount: str = ""
     term: str = ""
     price: str = ""
-    direction: str = ""               # 正回购 / 逆回购
-    status: str = "negotiating"       # negotiating | confirmed | rejected | cancelled | detail_pending
-    intent: str = ""                  # human-readable label
+    direction: str = ""
+    status: str = "negotiating"
+    intent: str = ""
     evidence: list[str] = field(default_factory=list)
     confidence: float = 0.8
+    field_sources: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,15 +95,17 @@ class TradeState:
             "intent": self.intent,
             "evidence": self.evidence[-8:],
             "confidence": self.confidence,
+            "field_sources": {key: values[-5:] for key, values in self.field_sources.items()},
         }
 
     def to_public_dict(self) -> dict[str, str]:
-        """Compact output for the '预期格式输出' column."""
         return {
+            "id": self.id,
             "account": self.account,
             "amount": self.amount,
             "term": self.term,
             "price": self.price,
+            "status": self.status,
             "intent": self.intent,
         }
 
@@ -105,62 +113,111 @@ class TradeState:
 @dataclass
 class ConversationState:
     """Per-conversation state maintained across messages."""
+
     con_id: str
     counterparty: str = ""
     tradername: str = ""
     trades: list[TradeState] = field(default_factory=list)
+    archived_trades: list[TradeState] = field(default_factory=list)
     messages: list[Message] = field(default_factory=list)
     _next_trade_id: int = 1
 
     def get_trade_by_id(self, trade_id: str) -> TradeState | None:
-        for t in self.trades:
-            if t.id == trade_id:
-                return t
+        for trade in self.trades:
+            if trade.id == trade_id:
+                return trade
         return None
 
     def active_trades(self) -> list[TradeState]:
-        return [t for t in self.trades if t.status not in {"cancelled"}]
+        return [trade for trade in self.trades if trade.status not in {"cancelled"}]
 
     def allocate_id(self) -> str:
-        """Return the next available trade id (T1, T2, ...)."""
-        tid = f"T{self._next_trade_id}"
-        self._next_trade_id += 1
-        return tid
+        while True:
+            trade_id = f"T{self._next_trade_id}"
+            self._next_trade_id += 1
+            if self.get_trade_by_id(trade_id) is None:
+                return trade_id
 
     def to_prompt_state(self) -> dict[str, Any]:
         return {
             "con_ID": self.con_id,
             "counterparty": self.counterparty,
             "tradername": self.tradername,
-            "trades": [t.to_dict() for t in self.trades],
+            "trades": [trade.to_dict() for trade in self.trades],
+            "archived_trades": [trade.to_dict() for trade in self.archived_trades],
         }
 
     def to_public_result(self) -> dict[str, Any]:
         return {
             "counterparty": self.counterparty,
-            "trades": [t.to_public_dict() for t in self.trades],
+            "trades": [trade.to_public_dict() for trade in self.trades],
         }
 
     def to_full_result(self) -> dict[str, Any]:
         return {
             "counterparty": self.counterparty,
             "state": {
-                "trades": [t.to_dict() for t in self.trades],
+                "trades": [trade.to_dict() for trade in self.trades],
+                "archived_trades": [trade.to_dict() for trade in self.archived_trades],
             },
         }
 
 
+def trade_index_for_prompt(state: ConversationState) -> dict[str, Any]:
+    """Compact trade index to help LLMs reuse stable ids."""
+
+    def compact(trade: TradeState) -> dict[str, Any]:
+        return {
+            "id": trade.id,
+            "account": trade.account,
+            "amount": trade.amount,
+            "term": trade.term,
+            "price": trade.price,
+            "direction": trade.direction,
+            "status": trade.status,
+            "intent": trade.intent,
+            "recent_evidence": trade.evidence[-3:],
+        }
+
+    return {
+        "tracked_trades": [compact(trade) for trade in state.trades],
+        "archived_trades": [compact(trade) for trade in state.archived_trades],
+    }
+
+
 @dataclass
 class TradeChange:
-    """Describes what the extract LLM thinks changed in the current message."""
-    type: str      # "create" | "update" | "delete" | "noop"
-    trade_id: str  # which trade is affected
-    reason: str    # why
+    """What the Extract LLM thinks changed in the current message."""
+
+    type: str
+    trade_id: str
+    reason: str
+
+
+@dataclass
+class StateChange:
+    """Mechanical state diff emitted by StateStore."""
+
+    trade_id: str
+    field: str
+    before: str
+    after: str
+    source: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "trade_id": self.trade_id,
+            "field": self.field,
+            "from": self.before,
+            "to": self.after,
+            "source": self.source,
+        }
 
 
 @dataclass
 class ExtractResult:
     """Output from the Extract LLM."""
+
     counterparty: str = ""
     trades: list[TradeState] = field(default_factory=list)
     changes: list[TradeChange] = field(default_factory=list)
@@ -168,16 +225,19 @@ class ExtractResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "counterparty": self.counterparty,
-            "trades": [t.to_dict() for t in self.trades],
-            "changes": [{"type": c.type, "trade_id": c.trade_id, "reason": c.reason} for c in self.changes],
+            "trades": [trade.to_dict() for trade in self.trades],
+            "changes": [
+                {"type": change.type, "trade_id": change.trade_id, "reason": change.reason}
+                for change in self.changes
+            ],
         }
 
 
 @dataclass
 class JudgeResult:
-    """Output from the Judge LLM — status verdict per trade."""
+    """Output from the Judge LLM: status verdict per trade."""
+
     trades: list[dict[str, Any]] = field(default_factory=list)
-    # Each dict: {"id": "T1", "status": "confirmed", "intent": "交易成交", "confidence": 0.95, "reason": "..."}
 
     def to_dict(self) -> dict[str, Any]:
         return {"trades": self.trades}
@@ -186,20 +246,23 @@ class JudgeResult:
 @dataclass
 class ProcessedRow:
     """Final output for one message row."""
+
     message: Message
     extract_result: dict[str, Any] = field(default_factory=dict)
+    normalized_extract_result: dict[str, Any] = field(default_factory=dict)
     judge_result: dict[str, Any] = field(default_factory=dict)
     final_state: dict[str, Any] = field(default_factory=dict)
     public_result: dict[str, Any] = field(default_factory=dict)
+    state_changes: list[dict[str, str]] = field(default_factory=list)
     used_llm: bool = False
     llm_error: str = ""
 
 
-# ---- deprecated classes (kept for extractors.py reference) ----
+# Deprecated classes kept only for compatibility with the old extractors.py.
+
 
 @dataclass
 class CandidateTrade:
-    """DEPRECATED: Old regex-based candidate trade. Not used by new engine."""
     account: str = ""
     amount: str = ""
     term: str = ""
@@ -213,7 +276,6 @@ class CandidateTrade:
 
 @dataclass
 class Extraction:
-    """DEPRECATED: Old regex-based extraction result. Not used by new engine."""
     message_intent_guess: str = "未知"
     operation_guess: str = "noop"
     accounts: list[str] = field(default_factory=list)

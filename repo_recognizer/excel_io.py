@@ -77,9 +77,11 @@ def write_results(
 
     output_headers = list(input_headers) + [
         "识别LLM输出json",
+        "识别LLM稳定ID输出json",
         "判断LLM输出json",
         "llm_used",
         "llm_error",
+        "状态变更摘要json",
         "最终状态json",
         "预期格式输出",
     ]
@@ -90,25 +92,30 @@ def write_results(
             list(row)
             + [
                 json_text(item.extract_result),
+                json_text(item.normalized_extract_result),
                 json_text(item.judge_result),
                 "Y" if item.used_llm else "N",
                 item.llm_error,
+                json_text(item.state_changes),
                 json_text(item.final_state),
                 json_text(item.public_result),
             ]
         )
 
+    wide_columns = {
+        "CONTEXT",
+        "识别LLM输出json",
+        "识别LLM稳定ID输出json",
+        "判断LLM输出json",
+        "llm_error",
+        "状态变更摘要json",
+        "最终状态json",
+        "预期格式输出",
+        "预期输出",
+    }
     for col_cells in worksheet.columns:
         header = str(col_cells[0].value or "")
-        if header in {
-            "CONTEXT",
-            "识别LLM输出json",
-            "判断LLM输出json",
-            "llm_error",
-            "最终状态json",
-            "预期格式输出",
-            "预期输出",
-        }:
+        if header in wide_columns:
             width = 60
         else:
             width = min(max(len(header) + 2, 12), 24)
