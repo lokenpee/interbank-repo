@@ -1,1 +1,7 @@
 ~$*.xlsx
+__pycache__/
+*.pyc
+.codegraph/
+测试输出*.xlsx
+example_本地识别输出.xlsx
+交易下文_本地识别输出.xlsx
