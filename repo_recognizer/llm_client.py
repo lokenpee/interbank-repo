@@ -33,11 +33,11 @@ class LLMClient:
         system_prompt: str = "",
         timeout: int = 60,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("REPO_LLM_API_KEY")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("REPO_LLM_API_KEY") or "sk-0498658d5f4d49098f7d1153c7b09652"
         self.base_url = (
-            base_url or os.getenv("OPENAI_BASE_URL") or os.getenv("REPO_LLM_BASE_URL") or "https://api.openai.com/v1"
+            base_url or os.getenv("OPENAI_BASE_URL") or os.getenv("REPO_LLM_BASE_URL") or "https://api.deepseek.com/v1"
         ).rstrip("/")
-        self.model = model or os.getenv("REPO_LLM_MODEL") or "gpt-4o-mini"
+        self.model = model or os.getenv("REPO_LLM_MODEL") or "deepseek-chat"
         self.system_prompt = system_prompt
         self.timeout = timeout
 
