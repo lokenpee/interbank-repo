@@ -22,6 +22,21 @@ class LLMError(RuntimeError):
     pass
 
 
+def _load_local_config(key: str) -> str:
+    """Load a value from the local config file (repo root / config.json).
+
+    This file is NOT tracked by git — see .gitignore.
+    """
+    try:
+        config_path = Path(__file__).resolve().parent.parent / "config.json"
+        if config_path.exists():
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            return str(config.get(key, ""))
+    except Exception:
+        pass
+    return ""
+
+
 class LLMClient:
     """OpenAI-compatible chat completion client."""
 
@@ -33,11 +48,11 @@ class LLMClient:
         system_prompt: str = "",
         timeout: int = 60,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("REPO_LLM_API_KEY") or "sk-0498658d5f4d49098f7d1153c7b09652"
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("REPO_LLM_API_KEY") or _load_local_config("api_key")
         self.base_url = (
-            base_url or os.getenv("OPENAI_BASE_URL") or os.getenv("REPO_LLM_BASE_URL") or "https://api.deepseek.com/v1"
+            base_url or os.getenv("OPENAI_BASE_URL") or os.getenv("REPO_LLM_BASE_URL") or _load_local_config("base_url") or "https://api.deepseek.com/v1"
         ).rstrip("/")
-        self.model = model or os.getenv("REPO_LLM_MODEL") or "deepseek-chat"
+        self.model = model or os.getenv("REPO_LLM_MODEL") or _load_local_config("model") or "deepseek-chat"
         self.system_prompt = system_prompt
         self.timeout = timeout
 
