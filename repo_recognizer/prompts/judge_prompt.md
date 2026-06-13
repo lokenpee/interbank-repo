@@ -40,6 +40,7 @@
 9. 当前消息如果是“调整押券/明细/95z/请过目”等成交后操作，即使 status 保持 confirmed，intent 也应写“补充明细”，不要继续写“交易成交”。
 10. normalized_extract_result.trades 是全量活跃交易簿。对于 current_message 没有涉及的旧交易，必须保持 current_state 里的 status 和 intent，不要因为它们被全量带入就改 intent。只有当前消息确实在补充该笔交易明细时，才把 intent 改成“补充明细”。
 11. 如果 current_message 是省略账户的“发汇享/发汇盈”等资金路径，且紧跟某笔新交易请求与 OK/好的确认，应优先判定它补充最近刚确认的那笔交易；不要仅因更早交易曾出现过同一路径，就改老交易 intent。
+12. “都发/都发汇享/你先都发”里的“都”优先指最近被点名或刚刚发路径的交易集合，不自动覆盖所有活跃交易。未在最近点名集合中、未发路径、未被确认的交易，不应高置信 confirmed；应保持 negotiating 或给低置信 reason。
 
 ## 输出格式
 
@@ -98,14 +99,27 @@ normalized_extract_result.trades：T1、T2、T3 均仍在活跃交易簿，price
 - T3 status=detail_pending，intent=“补充明细”。
 - reason：“T1/T3 对方已发资金路径，交易实质推进；T2 本轮未被明确发路径。”
 
-### 例4：“你先都发汇享”整体确认
+### 例4：“你先都发汇享”只确认最近点名集合
 
-history 最近：T1/T2/T3 是同批隔夜交易，T1/T3 已发路径或正在发路径。
-我方 current_message：“你先都发汇享 一会有别的户我再帮你调”
+history 最近：
+- 对方：“圆融安享10号 5550万-汇享；锦鸿3号-汇盈”
+- 我方 current_message：“你先都发汇享 一会有别的户我再帮你调”
 
 输出：
-- T1/T2/T3 status=confirmed，intent=“交易成交”。
-- reason：“我方发出整体执行指令‘都发汇享’，覆盖当前同批活跃交易，表示接受并推进成交。”
+- T1 status=confirmed，intent=“交易成交”。
+- T3 status=confirmed，intent=“交易成交”。
+- T2 status=negotiating，intent=“价格议价期限调整”，confidence 不宜过高。
+- reason：“‘都发汇享’是我方执行指令，对上一条点名的 T1/T3 属于隐式成交确认；T2 未被点名、未发路径，也未明确取消，保持协商状态。”
+- 错判警示：不要把“都”无限扩大到所有活跃交易。
+
+### 例4b：明确全部覆盖时才全量确认
+
+history 最近：T1/T2/T3 是同批隔夜交易。
+current_message：“这几个户都发汇享 / 三笔都发汇享 / 锦鸿1号也发汇享”
+
+输出：
+- 可将明确覆盖到的交易 confirmed。
+- reason 必须引用“这几个户/三笔/也”等能覆盖未点名交易的表达。
 
 ### 例5：同类追加，OK 确认
 
