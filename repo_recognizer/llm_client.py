@@ -47,7 +47,7 @@ class LLMClient:
         base_url: str | None = None,
         model: str | None = None,
         system_prompt: str = "",
-        timeout: int = 60,
+        timeout: int = 120,
         max_retries: int = 3,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("REPO_LLM_API_KEY") or _load_local_config("api_key")
@@ -185,7 +185,7 @@ class LLMClient:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout: int = 60,
+        timeout: int = 120,
         max_retries: int = 3,
     ) -> "LLMClient":
         """Factory: create an LLMClient with a system prompt loaded from a .md file."""

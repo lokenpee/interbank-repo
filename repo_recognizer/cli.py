@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=None, help="Default model for both LLMs.")
     parser.add_argument("--extract-model", default=None, help="Model for Extract LLM.")
     parser.add_argument("--judge-model", default=None, help="Model for Judge LLM.")
-    parser.add_argument("--timeout", type=int, default=60, help="HTTP timeout seconds for each LLM call.")
+    parser.add_argument("--timeout", type=int, default=120, help="HTTP timeout seconds for each LLM call.")
     parser.add_argument("--max-retries", type=int, default=3, help="Max retries on timeout/connection/5xx errors.")
     return parser
 
