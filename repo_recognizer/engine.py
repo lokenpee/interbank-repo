@@ -24,6 +24,8 @@ class RecognizerEngine:
         state = self.store.get_state(message.con_id)
         if message.tradername:
             state.tradername = message.tradername
+        if not state.counterparty:
+            state.counterparty = _counterparty_from_message(message)
 
         used_llm = False
         llm_error = ""
@@ -50,12 +52,16 @@ class RecognizerEngine:
             llm_error = "Extract LLM not available (no API key)"
 
         if normalized_extract_result is not None:
+            judge_extract_result = self.store.ensure_active_trades_for_judge(
+                state,
+                normalized_extract_result,
+            )
             if self.judge_llm.available:
                 try:
                     judge_result = self.judge_llm.judge(
                         message,
                         state,
-                        normalized_extract_result_dict,
+                        judge_extract_result.to_dict(),
                     )
                     judge_result_dict = judge_result.to_dict()
                     used_llm = True
@@ -67,7 +73,7 @@ class RecognizerEngine:
             # Verifier — mechanical, no LLM
             if judge_result is not None:
                 extract_trades_for_verify = [
-                    t.to_dict() for t in normalized_extract_result.trades
+                    t.to_dict() for t in judge_extract_result.trades
                 ]
                 verifier = verify(state, extract_trades_for_verify, judge_result)
                 verifier_result_dict = verifier.to_dict()
@@ -105,3 +111,11 @@ def _append_error(existing: str, new: str) -> str:
     if existing:
         return f"{existing}; {new}"
     return new
+
+
+def _counterparty_from_message(message: Message) -> str:
+    if message.interlocutor:
+        return message.interlocutor
+    if message.tradername and message.sender and message.sender != message.tradername:
+        return message.sender
+    return ""

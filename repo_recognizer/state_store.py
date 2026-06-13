@@ -18,6 +18,7 @@ from .models import (
     JudgeResult,
     Message,
     StateChange,
+    TradeChange,
     TradeState,
     clean_text,
     row_ref,
@@ -71,6 +72,37 @@ class StateStore:
                 change.trade_id = trade_ids[idx]
 
         return normalized
+
+    def ensure_active_trades_for_judge(
+        self,
+        state: ConversationState,
+        extract_result: ExtractResult,
+    ) -> ExtractResult:
+        """Return ExtractResult plus unchanged active trades for Judge context.
+
+        Extract LLM should output the full active book, but if it omits an
+        unchanged existing trade, Judge would otherwise lose that trade from its
+        per-row verdict surface. This is a mechanical state carry-forward.
+        """
+        expanded = deepcopy(extract_result)
+        seen_ids = {clean_text(trade.id) for trade in expanded.trades if clean_text(trade.id)}
+        deleted_ids = {
+            clean_text(change.trade_id)
+            for change in expanded.changes
+            if clean_text(change.type) == "delete"
+        }
+
+        for trade in state.active_trades():
+            if trade.id not in seen_ids and trade.id not in deleted_ids:
+                expanded.trades.append(deepcopy(trade))
+                expanded.changes.append(
+                    TradeChange(
+                        type="noop",
+                        trade_id=trade.id,
+                        reason="系统机械补齐已有活跃交易，供 Judge 做全量状态判断",
+                    )
+                )
+        return expanded
 
     def merge_extract_result(
         self,

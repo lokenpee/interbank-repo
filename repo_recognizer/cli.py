@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--extract-model", default=None, help="Model for Extract LLM.")
     parser.add_argument("--judge-model", default=None, help="Model for Judge LLM.")
     parser.add_argument("--timeout", type=int, default=60, help="HTTP timeout seconds for each LLM call.")
+    parser.add_argument("--max-retries", type=int, default=3, help="Max retries on timeout/connection/5xx errors.")
     return parser
 
 
@@ -39,6 +40,7 @@ def main() -> None:
         base_url=args.base_url,
         model=args.extract_model or args.model,
         timeout=args.timeout,
+        max_retries=args.max_retries,
     )
     judge_client = LLMClient.with_prompt(
         "judge_prompt.md",
@@ -46,6 +48,7 @@ def main() -> None:
         base_url=args.base_url,
         model=args.judge_model or args.model,
         timeout=args.timeout,
+        max_retries=args.max_retries,
     )
 
     if not extract_client.available:

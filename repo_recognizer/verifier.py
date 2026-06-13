@@ -41,7 +41,7 @@ def verify(
         })
 
     # 2. Judge used an ID that doesn't exist in Extract output
-    extra = judge_ids - extract_ids
+    extra = judge_ids - extract_ids - state_ids
     for tid in sorted(extra):
         verdicts.append({
             "level": "error",
